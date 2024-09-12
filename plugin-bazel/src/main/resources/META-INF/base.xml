@@ -43,6 +43,7 @@
         <externalIconProvider
                 key="bazelbsp"
                 implementationClass="org.jetbrains.bazel.config.BazelExternalSystemIconProvider"/>
+        <projectModelModifier implementation="org.jetbrains.bazel.flow.modify.BazelProjectModelModifier"/>
 
         <fileType
                 name="Starlark"
@@ -127,6 +128,14 @@
         <lang.syntaxHighlighterFactory
                 language="Bazelrc"
                 implementationClass="org.jetbrains.bazel.languages.bazelrc.highlighting.BazelrcSyntaxHighlighterFactory"/>
+
+        <lang.parserDefinition
+                language="Bazelrc"
+                implementationClass="org.jetbrains.bazel.languages.bazelrc.parser.BazelrcParserDefinition"/>
+
+        <completion.contributor
+                language="Bazelrc"
+                implementationClass="org.jetbrains.bazel.languages.bazelrc.completion.BazelrcCompletionContributor"/>
 
         <projectConfigurable
                 parentId="tools"
