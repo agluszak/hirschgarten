@@ -2,6 +2,7 @@ package org.jetbrains.plugins.bsp.impl.server.connection
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
+import org.jetbrains.annotations.TestOnly
 import org.jetbrains.bsp.protocol.BazelBuildServerCapabilities
 import org.jetbrains.bsp.protocol.JoinedBuildServer
 
@@ -14,7 +15,7 @@ public interface BspConnection {
    * Establish a connection with the server, and initialize server.
    * If the connection is already established no actions should be performed.
    */
-  public suspend fun connect(taskId: Any)
+  public suspend fun connect()
 
   /**
    * Disconnect from the server,
@@ -35,20 +36,25 @@ public interface BspConnection {
   public fun isConnected(): Boolean
 }
 
-var Project.connection: BspConnection
-  get() = findOrCreateConnection().also { connection = it }
-  set(value) {
-    BspConnectionService.getInstance(this).connection = value
-  }
+val Project.connection: BspConnection
+  get() = BspConnectionService.getInstance(this).connection
 
-private fun Project.findOrCreateConnection(): BspConnection =
-  BspConnectionService.getInstance(this).connection ?: DefaultBspConnection(this, connectionDetailsProvider)
+/**
+ * the method should be solely used for mocking the project's BSP connection in tests.
+ */
+@TestOnly
+fun Project.setMockTestConnection(newConnection: BspConnection) {
+  BspConnectionService.getInstance(this).connection = newConnection
+}
 
 @Service(Service.Level.PROJECT)
-internal class BspConnectionService {
-  var connection: BspConnection? = null
+private class BspConnectionService(project: Project) {
+  var connection: BspConnection = DefaultBspConnection(project, project.connectionDetailsProvider)
+    @Synchronized get
 
-  internal companion object {
+    @Synchronized set
+
+  companion object {
     fun getInstance(project: Project): BspConnectionService = project.getService(BspConnectionService::class.java)
   }
 }

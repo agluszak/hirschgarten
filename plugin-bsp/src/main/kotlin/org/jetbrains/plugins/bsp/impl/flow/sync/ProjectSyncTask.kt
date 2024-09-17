@@ -1,6 +1,7 @@
 package org.jetbrains.plugins.bsp.impl.flow.sync
 
 import com.intellij.build.events.impl.FailureResultImpl
+import com.intellij.ide.impl.isTrusted
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.diagnostic.fileLogger
@@ -37,39 +38,45 @@ private val log = logger<ProjectSyncTask>()
 
 class ProjectSyncTask(private val project: Project) {
   suspend fun sync(buildProject: Boolean) {
-    coroutineScope {
-      bspTracer.spanBuilder("bsp.sync.project.ms").useWithScope {
-        var syncAlreadyInProgress = false
-        try {
-          log.debug("Starting sync project task")
-          project.syncConsole.startTask(
-            taskId = PROJECT_SYNC_TASK_ID,
-            title = BspPluginBundle.message("console.task.sync.title"),
-            message = BspPluginBundle.message("console.task.sync.in.progress"),
-            cancelAction = {
-              BspSyncStatusService.getInstance(project).cancel()
-              coroutineContext.cancel()
-            },
-          )
+    if (project.isTrusted()) {
+      coroutineScope {
+        bspTracer.spanBuilder("bsp.sync.project.ms").useWithScope {
+          var syncAlreadyInProgress = false
+          try {
+            log.debug("Starting sync project task")
+            project.syncConsole.startTask(
+              taskId = PROJECT_SYNC_TASK_ID,
+              title = BspPluginBundle.message("console.task.sync.title"),
+              message = BspPluginBundle.message("console.task.sync.in.progress"),
+              cancelAction = {
+                BspSyncStatusService.getInstance(project).cancel()
+                coroutineContext.cancel()
+              },
+            )
 
-          preSync()
-          doSync(buildProject)
+            preSync()
+            doSync(buildProject)
 
-          project.syncConsole.finishTask(PROJECT_SYNC_TASK_ID, BspPluginBundle.message("console.task.sync.success"))
-        } catch (e: CancellationException) {
-          project.syncConsole.finishTask(PROJECT_SYNC_TASK_ID, BspPluginBundle.message("console.task.sync.cancelled"), FailureResultImpl())
-        } catch (_: SyncAlreadyInProgressException) {
-          syncAlreadyInProgress = true
-        } catch (e: Exception) {
-          log.debug("BSP sync failed")
-          project.syncConsole.finishTask(
-            PROJECT_SYNC_TASK_ID,
-            BspPluginBundle.message("console.task.sync.failed"),
-            FailureResultImpl(e),
-          )
-        } finally {
-          if (!syncAlreadyInProgress) {
-            postSync()
+            project.syncConsole.finishTask(PROJECT_SYNC_TASK_ID, BspPluginBundle.message("console.task.sync.success"))
+          } catch (e: CancellationException) {
+            project.syncConsole.finishTask(
+              PROJECT_SYNC_TASK_ID,
+              BspPluginBundle.message("console.task.sync.cancelled"),
+              FailureResultImpl(),
+            )
+          } catch (_: SyncAlreadyInProgressException) {
+            syncAlreadyInProgress = true
+          } catch (e: Exception) {
+            log.debug("BSP sync failed")
+            project.syncConsole.finishTask(
+              PROJECT_SYNC_TASK_ID,
+              BspPluginBundle.message("console.task.sync.failed"),
+              FailureResultImpl(e),
+            )
+          } finally {
+            if (!syncAlreadyInProgress) {
+              postSync()
+            }
           }
         }
       }
@@ -85,15 +92,30 @@ class ProjectSyncTask(private val project: Project) {
   private suspend fun doSync(buildProject: Boolean) {
     withBackgroundProgress(project, "Syncing project...", true) {
       reportSequentialProgress {
+        executePreSyncHooks(it)
         executeSyncHooks(it, buildProject)
+        executePostSyncHooks(it)
       }
     }
   }
 
-  private suspend fun executeSyncHooks(progressReporter: SequentialProgressReporter, buildProject: Boolean) {
-    log.debug("Connecting to the server")
-    project.connection.connect(PROJECT_SYNC_TASK_ID)
+  private suspend fun executePreSyncHooks(progressReporter: SequentialProgressReporter) {
+    val environment =
+      ProjectPreSyncHook.ProjectPreSyncHookEnvironment(
+        project = project,
+        taskId = PROJECT_SYNC_TASK_ID,
+        progressReporter = progressReporter,
+      )
 
+    project.defaultProjectPreSyncHooks.forEach {
+      it.onPreSync(environment)
+    }
+    project.additionalProjectPreSyncHooks.forEach {
+      it.onPreSync(environment)
+    }
+  }
+
+  private suspend fun executeSyncHooks(progressReporter: SequentialProgressReporter, buildProject: Boolean) {
     val diff = AllProjectStructuresProvider(project).newDiff()
     project.connection.runWithServer { server, capabilities ->
       bspTracer.spanBuilder("collect.project.details.ms").use {
@@ -119,6 +141,22 @@ class ProjectSyncTask(private val project: Project) {
     }
 
     diff.applyAll(PROJECT_SYNC_TASK_ID)
+  }
+
+  private suspend fun executePostSyncHooks(progressReporter: SequentialProgressReporter) {
+    val environment =
+      ProjectPostSyncHook.ProjectPostSyncHookEnvironment(
+        project = project,
+        taskId = PROJECT_SYNC_TASK_ID,
+        progressReporter = progressReporter,
+      )
+
+    project.defaultProjectPostSyncHooks.forEach {
+      it.onPostSync(environment)
+    }
+    project.additionalProjectPostSyncHooks.forEach {
+      it.onPostSync(environment)
+    }
   }
 
   private suspend fun postSync() {

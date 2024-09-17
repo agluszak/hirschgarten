@@ -38,6 +38,7 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
+import kotlin.io.path.extension
 import kotlin.io.path.inputStream
 import kotlin.io.path.name
 import kotlin.io.path.notExists
@@ -86,7 +87,9 @@ class BazelProjectMapper(
       }
     val targetsAsLibraries =
       measure("Targets as libraries") {
-        targets - targetsToImport.map { Label.parse(it.id) }.toSet()
+        val libraries = targets - targetsToImport.map { Label.parse(it.id) }.toSet()
+        val usedLibraries = dependencyGraph.filterUsedLibraries(libraries, targetsToImport)
+        usedLibraries
       }
     val outputJarsLibraries =
       measure("Create output jars libraries") {
@@ -111,6 +114,10 @@ class BazelProjectMapper(
     val androidLibrariesMapper =
       measure("Create android libraries") {
         calculateAndroidLibrariesMapper(targetsToImport, workspaceContext)
+      }
+    val goLibrariesMapper =
+      measure("Create go libraries") {
+        calculateGoLibrariesMapper(targetsToImport)
       }
     val librariesFromTransitiveCompileTimeJars =
       measure("Libraries from transitive compile-time jars") {
@@ -178,11 +185,15 @@ class BazelProjectMapper(
       }
     val goLibrariesToImport =
       measureIf(
-        description = "Create Go libraries",
+        description = "Merge all Go libraries",
         predicate = { workspaceContext.isGoEnabled },
         ifFalse = emptyMap(),
       ) {
-        createGoLibraries(targetsAsLibraries)
+        goLibrariesMapper.values
+          .flatten()
+          .distinct()
+          .associateBy { it.label } +
+          createGoLibraries(targetsAsLibraries)
       }
     val invalidTargets =
       measure("Save invalid target labels") {
@@ -396,6 +407,22 @@ class BazelProjectMapper(
       interfaceJars = emptySet(),
     )
   }
+
+  private fun calculateGoLibrariesMapper(targetsToImport: Sequence<TargetInfo>): Map<Label, List<GoLibrary>> =
+    targetsToImport
+      .mapNotNull { target ->
+        if (!target.hasGoTargetInfo()) return@mapNotNull null
+        val label = Label.parse(target.id)
+        val libraries =
+          target.goTargetInfo.generatedLibrariesList.map {
+            GoLibrary(
+              label = label,
+              goImportPath = target.goTargetInfo.importpath,
+              goRoot = bazelPathsResolver.resolve(it).parent.toUri(),
+            )
+          }
+        label to libraries
+      }.toMap()
 
   /**
    * In some cases, the jar dependencies of a target might be injected by bazel or rules and not are not
@@ -879,7 +906,7 @@ class BazelProjectMapper(
 
   private fun resolveSourceSet(target: TargetInfo, languagePlugin: LanguagePlugin<*>): SourceSet {
     val sources =
-      target.sourcesList
+      (target.sourcesList + languagePlugin.calculateAdditionalSources(target))
         .toSet()
         .map(bazelPathsResolver::resolve)
         .onEach { if (it.notExists()) it.logNonExistingFile(target.id) }
@@ -888,6 +915,7 @@ class BazelProjectMapper(
       target.generatedSourcesList
         .toSet()
         .map(bazelPathsResolver::resolve)
+        .filter { it.extension != "srcjar" }
         .onEach { if (it.notExists()) it.logNonExistingFile(target.id) }
         .filter { it.exists() }
 
