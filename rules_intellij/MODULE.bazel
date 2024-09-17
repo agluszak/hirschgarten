@@ -82,7 +82,7 @@ http_archive(
 
 IC_243_URL = "https://www.jetbrains.com/intellij-repository/snapshots/com/jetbrains/intellij/idea/ideaIC/%s/ideaIC-%s.zip" % (SDK_243_INTELLIJ_REPOSITORY_VERSION, SDK_243_INTELLIJ_REPOSITORY_VERSION)
 
-IC_243_CHECKSUM = "sha256-3lya1EXP4EgDWGZxXtOqX1AafeC9eIsip0xhoTuAy7w="
+IC_243_CHECKSUM = "sha256-Dvr/rKw5swcY9RJanPOpXEyyU4IsJk87w04nhJJJJbA="
 
 http_archive(
     name = "intellij_ce_2024_3",
