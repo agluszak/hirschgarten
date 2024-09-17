@@ -25,8 +25,10 @@ register_toolchains(
     "//:kotlin_toolchain",
 )
 
+# Required by rules_jvm_external since version 6.3
+bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_java", version = "7.11.1")
-bazel_dep(name = "rules_jvm_external", version = "6.2")
+bazel_dep(name = "rules_jvm_external", version = "6.3")
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 maven.install(
@@ -56,7 +58,7 @@ maven.install(
         "io.opentelemetry:opentelemetry-extension-kotlin:1.42.1",
         "io.opentelemetry:opentelemetry-sdk-trace:1.42.1",
         "io.opentelemetry:opentelemetry-sdk:1.42.1",
-        "net.java.dev.jna:jna:5.14.0",
+        "net.java.dev.jna:jna:5.15.0",
         "org.apache.httpcomponents:httpclient:4.5.14",
         "org.apache.logging.log4j:log4j-api:2.24.0",
         "org.apache.logging.log4j:log4j-core:2.24.0",
@@ -83,31 +85,31 @@ maven.artifact(
     artifact = "kotlinx-coroutines-core",
     group = "org.jetbrains.kotlinx",
     neverlink = True,
-    version = "1.8.1",
+    version = "1.9.0",
 )
 maven.artifact(
     artifact = "kotlinx-coroutines-core-jvm",
     group = "org.jetbrains.kotlinx",
     neverlink = True,
-    version = "1.8.1",
+    version = "1.9.0",
 )
 maven.artifact(
     name = "server_maven",
     artifact = "kotlinx-coroutines-core",
     group = "org.jetbrains.kotlinx",
-    version = "1.8.1",
+    version = "1.9.0",
 )
 maven.artifact(
     name = "server_maven",
     artifact = "kotlinx-coroutines-core-jvm",
     group = "org.jetbrains.kotlinx",
-    version = "1.8.1",
+    version = "1.9.0",
 )
 maven.artifact(
     name = "server_maven",
     artifact = "kotlinx-coroutines-test",
     group = "org.jetbrains.kotlinx",
-    version = "1.8.1",
+    version = "1.9.0",
 )
 use_repo(
     maven,
@@ -129,7 +131,7 @@ http_jar(
 )
 
 bazel_dep(name = "rules_proto", version = "6.0.2")
-bazel_dep(name = "rules_cc", version = "0.0.9")
+bazel_dep(name = "rules_cc", version = "0.0.10")
 bazel_dep(name = "platforms", version = "0.0.10")
 bazel_dep(name = "rules_python", version = "0.35.0")
 

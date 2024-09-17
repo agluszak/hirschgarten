@@ -43,6 +43,7 @@
         <externalIconProvider
                 key="bazelbsp"
                 implementationClass="org.jetbrains.bazel.config.BazelExternalSystemIconProvider"/>
+        <projectModelModifier implementation="org.jetbrains.bazel.flow.modify.BazelProjectModelModifier"/>
 
         <fileType
                 name="Starlark"
@@ -128,19 +129,23 @@
                 language="Bazelrc"
                 implementationClass="org.jetbrains.bazel.languages.bazelrc.highlighting.BazelrcSyntaxHighlighterFactory"/>
 
-        <projectConfigurable
-                parentId="tools"
-                instance="org.jetbrains.bazel.languages.starlark.formatting.configuration.BuildifierConfigurable"
-                provider="org.jetbrains.bazel.languages.starlark.formatting.configuration.BuildifierConfigurableProvider"
-                id="org.jetbrains.bazel.settings.BuildifierConfigurable"
-                displayName="Buildifier"
-                nonDefaultProject="false" />
+        <lang.parserDefinition
+                language="Bazelrc"
+                implementationClass="org.jetbrains.bazel.languages.bazelrc.parser.BazelrcParserDefinition"/>
+
+        <completion.contributor
+                language="Bazelrc"
+                implementationClass="org.jetbrains.bazel.languages.bazelrc.completion.BazelrcCompletionContributor"/>
 
         <projectConfigurable
-                parentId="build.tools"
+                parentId="tools"
                 instance="org.jetbrains.bazel.settings.BazelProjectSettingsConfigurable"
-                provider="org.jetbrains.bazel.settings.BazelProjectSettingsConfigurableProvider"
-        />
+                provider="org.jetbrains.bazel.settings.BazelProjectSettingsConfigurableProvider">
+            <configurable
+                    instance="org.jetbrains.bazel.languages.starlark.formatting.configuration.BuildifierConfigurable"
+                    provider="org.jetbrains.bazel.languages.starlark.formatting.configuration.BuildifierConfigurableProvider"
+                    displayName="Buildifier"/>
+        </projectConfigurable>
 
         <projectViewNodeDecorator
                 implementation="org.jetbrains.bazel.settings.ProjectViewFileNodeDecorator"/>
