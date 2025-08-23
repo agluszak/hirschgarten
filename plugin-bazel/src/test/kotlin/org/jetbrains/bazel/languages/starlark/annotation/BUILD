@@ -28,7 +28,11 @@ kt_intellij_junit4_test(
 kt_intellij_junit4_test(
     name = "StarlarkUnusedDeclarationTest",
     src = "StarlarkUnusedDeclarationTest.kt",
-    data = ["//plugin-bazel/src/test/testData/starlark/annotation:UnusedDeclarationTestData.bzl"],
+    data = [
+        "//plugin-bazel/src/test/testData/starlark/annotation:UnusedDeclarationTestData.bzl",
+        "//plugin-bazel/src/test/testData/starlark/annotation:LoadedSymbol_defs.bzl",
+        "//plugin-bazel/src/test/testData/starlark/annotation:LoadedSymbol_main.bzl",
+    ],
     tags = ["exclusive"],
     deps = [
         "//plugin-bazel",
