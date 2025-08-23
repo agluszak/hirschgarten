@@ -11,3 +11,15 @@ kt_intellij_junit4_test(
         "//rules_intellij/intellij_platform_sdk:plugin_api",
     ],
 )
+
+kt_intellij_junit4_test(
+    name = "StarlarkLoadedVariableFindUsagesTest",
+    src = "StarlarkLoadedVariableFindUsagesTest.kt",
+    data = ["//plugin-bazel/src/test/testData/starlark/findusages"],
+    tags = ["exclusive"],
+    deps = [
+        "//plugin-bazel",
+        "//plugin-bazel/src/test/kotlin/org/jetbrains/bazel/languages/starlark/fixtures",
+        "//rules_intellij/intellij_platform_sdk:plugin_api",
+    ],
+)

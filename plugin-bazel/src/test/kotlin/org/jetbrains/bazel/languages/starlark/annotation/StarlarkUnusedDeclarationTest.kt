@@ -7,4 +7,9 @@ class StarlarkUnusedDeclarationTest : StarlarkAnnotatorTestCase() {
     myFixture.configureByFile("UnusedDeclarationTestData.bzl")
     myFixture.checkHighlighting(false, false, true)
   }
+
+  fun testLoadedSymbolUsedInAnotherFile() {
+    myFixture.configureByFiles("LoadedSymbol_defs.bzl", "LoadedSymbol_main.bzl")
+    myFixture.checkHighlighting(false, false, true)
+  }
 }
