@@ -826,6 +826,34 @@
       implementation="org.jetbrains.bazel.searchEverywhere.SeLabelProviderFactory"
     />
 
+    <psi.externalSymbolProvider
+      implementation="org.jetbrains.bazel.symbols.BazelTargetSymbolProvider"
+      id="bazel.target.symbol.provider"
+      order="first"
+    />
+
+    <psi.symbolReferenceProvider
+      implementation="org.jetbrains.bazel.symbols.BazelLabelSymbolReferenceProvider"
+      id="bazel.label.symbol.reference.provider"
+      order="first"
+    />
+
+    <rename.symbolRenameSupport
+      implementation="org.jetbrains.bazel.symbols.BazelTargetRenameSupport"
+      id="bazel.target.rename.support"
+      order="first"
+    />
+    <safeDelete.symbolSafeDeleteProvider
+      implementation="org.jetbrains.bazel.symbols.BazelTargetSafeDeleteProvider"
+      id="bazel.target.safe.delete.provider"
+      order="first"
+    />
+
+    <stubIndex
+      implementation="org.jetbrains.bazel.stubs.BazelTargetIndex"
+      id="bazel.target.index"
+    />
+
     <portForwarding.processHandlerPidProvider
       implementation="org.jetbrains.bazel.sdkcompat.BazelProcessHandlerPidProvider"
     />
