@@ -7,8 +7,16 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.*
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.util.IncorrectOperationException
-import org.jetbrains.bazel.label.Label
+import org.jetbrains.bazel.label.*
 import org.jetbrains.bazel.languages.starlark.psi.StarlarkStringLiteralExpression
+
+/**
+ * Context information about where a reference appears
+ */
+data class SourceContext(
+  val repo: RepoType,
+  val packagePath: List<String>
+)
 
 /**
  * Reference from a string literal to a Bazel target symbol
@@ -49,11 +57,12 @@ class BazelTargetReference(
 
   override fun getVariants(): Array<Any> {
     // Provide completion variants - all available targets
-    val allTargetNames = BazelTargetIndex.getAllTargetNames(project)
-    return allTargetNames.map { targetName ->
-      LookupElementBuilder.create(targetName)
+    val allTargets = BazelTargetIndex.findTargetsByName("", project)  // Get all targets
+    return allTargets.map { (label, targetInfo) ->
+      com.intellij.codeInsight.lookup.LookupElementBuilder.create(targetInfo.targetName)
         .withIcon(org.jetbrains.bazel.assets.BazelPluginIcons.bazel)
         .withTypeText("Bazel Target")
+        .withTailText(" (${targetInfo.packagePath})", true)
     }.toTypedArray()
   }
 
@@ -63,10 +72,10 @@ class BazelTargetReference(
       try {
         val label = Label.parse(targetLabel)
         val newLabel = when (label) {
-          is org.jetbrains.bazel.label.ResolvedLabel -> 
-            label.copy(target = org.jetbrains.bazel.label.SingleTarget(newElementName))
-          is org.jetbrains.bazel.label.RelativeLabel ->
-            label.copy(target = org.jetbrains.bazel.label.SingleTarget(newElementName))
+          is ResolvedLabel -> 
+            label.copy(target = SingleTarget(newElementName))
+          is RelativeLabel ->
+            label.copy(target = SingleTarget(newElementName))
           else -> label
         }
         
@@ -84,25 +93,85 @@ class BazelTargetReference(
     try {
       val label = Label.parse(targetLabel)
       
-      // If it's a simple target name, look it up in the index
-      if (label is org.jetbrains.bazel.label.RelativeLabel || 
-          (label is org.jetbrains.bazel.label.ResolvedLabel && label.repo is org.jetbrains.bazel.label.Main)) {
+      val resolvedLabel = when (label) {
+        is RelativeLabel -> {
+          // Resolve relative to source context
+          val sourceContext = getSourceContext()
+          val base = ResolvedLabel(
+            repo = sourceContext.repo,
+            packagePath = Package(sourceContext.packagePath),
+            target = SingleTarget("")
+          )
+          label.resolve(base)
+        }
         
-        val targetName = label.targetName
-        val targetInfos = BazelTargetIndex.getTargetsByName(targetName, project)
+        is ResolvedLabel -> {
+          // Apply repository mapping if needed
+          applyRepoMapping(label)
+        }
         
-        return targetInfos.map { it.toSymbol() }
+        else -> return emptyList()
       }
       
-      // For more complex labels, we'd need additional resolution logic
-      // TODO: Implement full label resolution with repository mapping
+      // Now we can do exact lookup by the resolved label
+      val targetInfo = BazelTargetIndex.getTargetByLabel(resolvedLabel, project)
+      return if (targetInfo != null) {
+        listOf(targetInfo.toSymbol())
+      } else {
+        emptyList()
+      }
       
     } catch (e: Exception) {
       // Invalid label format
       return emptyList()
     }
+  }
+  
+  private fun getSourceContext(): SourceContext {
+    // Get the package context where this reference appears
+    val containingFile = element.containingFile
+    val virtualFile = containingFile.virtualFile
     
-    return emptyList()
+    if (virtualFile != null) {
+      val packagePath = getPackagePathFromFile(virtualFile)
+      // For now assume main workspace - proper repo detection would go here  
+      return SourceContext(Main, packagePath.split("/").filter { it.isNotEmpty() })
+    }
+    
+    return SourceContext(Main, emptyList())
+  }
+  
+  private fun applyRepoMapping(label: ResolvedLabel): Label {
+    // Use existing repository mapping service if available
+    return when (label.repo) {
+      is Apparent -> {
+        // Convert @rules_java -> @@rules_java~1.2.3 using repo mapping
+        // For now, just return the label as-is
+        label
+      }
+      else -> label
+    }
+  }
+  
+  private fun getPackagePathFromFile(file: com.intellij.openapi.vfs.VirtualFile): String {
+    val filePath = file.path
+    
+    // Find workspace root
+    var currentDir = file.parent
+    while (currentDir != null) {
+      val children = currentDir.children
+      if (children.any { it.name == "WORKSPACE" || it.name == "MODULE.bazel" }) {
+        // Found workspace root
+        val workspacePath = currentDir.path
+        val relativePath = filePath.removePrefix(workspacePath).removePrefix("/")
+        val packageDir = relativePath.removeSuffix("/${file.name}")
+        
+        return packageDir.takeIf { it.isNotEmpty() } ?: ""
+      }
+      currentDir = currentDir.parent
+    }
+    
+    return ""
   }
 
   private fun findDeclarationElement(symbol: BazelTargetSymbol): PsiElement? {
@@ -160,7 +229,7 @@ class BazelTargetReferenceProvider : PsiReferenceProvider() {
     return value.startsWith("//") || 
            value.startsWith(":") || 
            (value.contains(":") && !value.contains(" ")) ||
-           value.matches(Regex("^[a-zA-Z0-9_-]+$")) // Simple target name
+           (!value.contains(" ") && value.isNotEmpty()) // No spaces, not empty
   }
 }
 

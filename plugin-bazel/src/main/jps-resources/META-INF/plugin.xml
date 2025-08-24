@@ -504,6 +504,9 @@
       serviceImplementation="org.jetbrains.bazel.server.connection.BazelServerServiceImpl"
       serviceInterface="org.jetbrains.bazel.server.connection.BazelServerService"
     />
+    <projectService
+      serviceImplementation="org.jetbrains.bazel.symbols.BazelQueryService"
+    />
 
     <consoleFilterProvider implementation="org.jetbrains.bazel.ui.console.BazelBuildTargetConsoleFilterProvider" />
 

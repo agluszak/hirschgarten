@@ -10,8 +10,7 @@ import org.jetbrains.bazel.label.Label
 class BazelTargetSymbolPointer(
   private val labelString: String,
   private val buildFilePath: String,
-  private val targetType: BazelTargetType,
-  private val aliases: Set<String>
+  private val targetType: BazelTargetType
 ) : Pointer<BazelTargetSymbol> {
 
   override fun dereference(): BazelTargetSymbol? {
@@ -20,8 +19,7 @@ class BazelTargetSymbolPointer(
       BazelTargetSymbol(
         label = label,
         buildFilePath = buildFilePath,
-        targetType = targetType,
-        aliases = aliases
+        targetType = targetType
       )
     } catch (e: Exception) {
       // Return null if the label cannot be parsed (e.g., target no longer exists)

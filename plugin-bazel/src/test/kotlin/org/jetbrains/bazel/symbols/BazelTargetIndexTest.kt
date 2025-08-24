@@ -2,6 +2,7 @@ package org.jetbrains.bazel.symbols
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.indexing.FileBasedIndex
+import org.jetbrains.bazel.label.*
 
 class BazelTargetIndexTest : BasePlatformTestCase() {
 
@@ -28,33 +29,33 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
     // Create a BUILD file in the test project
     val buildFile = myFixture.addFileToProject("java/test/BUILD", buildContent)
     
-    // Get indexed targets
-    val allTargetNames = BazelTargetIndex.getAllTargetNames(myFixture.project)
+    // Get indexed labels
+    val allLabels = BazelTargetIndex.getAllLabels(myFixture.project)
     
-    // Verify targets are indexed
-    assertTrue(allTargetNames.contains("test_lib"))
-    assertTrue(allTargetNames.contains("test_lib_test"))
-    assertTrue(allTargetNames.contains("lib_alias"))
+    // Verify targets are indexed as proper labels
+    val testLibLabel = ResolvedLabel(Main, Package(listOf("java", "test")), SingleTarget("test_lib"))
+    val testLibTestLabel = ResolvedLabel(Main, Package(listOf("java", "test")), SingleTarget("test_lib_test"))
+    val libAliasLabel = ResolvedLabel(Main, Package(listOf("java", "test")), SingleTarget("lib_alias"))
     
-    // Verify we can find targets by name
-    val testLibTargets = BazelTargetIndex.getTargetsByName("test_lib", myFixture.project)
-    assertEquals(1, testLibTargets.size)
+    assertTrue("Should index test_lib", allLabels.any { it.targetName == "test_lib" })
+    assertTrue("Should index test_lib_test", allLabels.any { it.targetName == "test_lib_test" })
+    assertTrue("Should index lib_alias", allLabels.any { it.targetName == "lib_alias" })
     
-    val testLib = testLibTargets.first()
-    assertEquals("test_lib", testLib.targetName)
+    // Verify we can find targets by exact label
+    val testLib = BazelTargetIndex.getTargetByLabel(testLibLabel, myFixture.project)
+    assertNotNull("Should find test_lib by label", testLib)
+    
+    assertEquals("test_lib", testLib!!.targetName)
     assertEquals("java/test", testLib.packagePath)
     assertEquals(BazelTargetType.JAVA_LIBRARY, testLib.targetType)
     assertEquals("java_library", testLib.ruleName)
     assertEquals(listOf("//base:common"), testLib.dependencies)
     
     // Verify alias is indexed with correct information
-    val aliasTargets = BazelTargetIndex.getTargetsByName("lib_alias", myFixture.project)
-    assertEquals(1, aliasTargets.size)
-    
-    val alias = aliasTargets.first()
-    assertEquals("lib_alias", alias.targetName)
+    val alias = BazelTargetIndex.getTargetByLabel(libAliasLabel, myFixture.project)
+    assertNotNull("Should find lib_alias by label", alias)
+    assertEquals("lib_alias", alias!!.targetName)
     assertEquals(BazelTargetType.ALIAS, alias.targetType)
-    assertTrue(alias.aliases.contains("lib_alias"))
   }
 
   fun testIndexMultiplePackages() {
@@ -72,15 +73,15 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
     """.trimIndent())
     
     // Verify targets from different packages
-    val targetsInPkg1 = BazelTargetIndex.getTargetsInPackage("pkg1", myFixture.project)
+    val targetsInPkg1 = BazelTargetIndex.getTargetsInPackage("pkg1", Main, myFixture.project)
     assertEquals(1, targetsInPkg1.size)
     assertEquals("lib1", targetsInPkg1.first().targetName)
     
-    val targetsInPkg2 = BazelTargetIndex.getTargetsInPackage("pkg2", myFixture.project)
+    val targetsInPkg2 = BazelTargetIndex.getTargetsInPackage("pkg2", Main, myFixture.project)
     assertEquals(1, targetsInPkg2.size)
     assertEquals("lib2", targetsInPkg2.first().targetName)
     
-    val targetsInSubPkg = BazelTargetIndex.getTargetsInPackage("pkg1/subpkg", myFixture.project)
+    val targetsInSubPkg = BazelTargetIndex.getTargetsInPackage("pkg1/subpkg", Main, myFixture.project)
     assertEquals(1, targetsInSubPkg.size)
     assertEquals("bin1", targetsInSubPkg.first().targetName)
     assertEquals(BazelTargetType.JAVA_BINARY, targetsInSubPkg.first().targetType)
@@ -94,7 +95,7 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
       )
     """.trimIndent())
     
-    val rootTargets = BazelTargetIndex.getTargetsInPackage("", myFixture.project)
+    val rootTargets = BazelTargetIndex.getTargetsInPackage("", Main, myFixture.project)
     assertEquals(1, rootTargets.size)
     assertEquals("root_config", rootTargets.first().targetName)
     assertEquals("", rootTargets.first().packagePath)
@@ -120,20 +121,21 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
     """.trimIndent())
     
     // Original target should be indexed
-    val toolTargets = BazelTargetIndex.getTargetsByName("tool", myFixture.project)
-    assertEquals(1, toolTargets.size)
-    assertEquals(BazelTargetType.JAVA_BINARY, toolTargets.first().targetType)
-    assertFalse(toolTargets.first().isAlias)
+    val toolLabel = ResolvedLabel(Main, Package(listOf("tools")), SingleTarget("tool"))
+    val toolTarget = BazelTargetIndex.getTargetByLabel(toolLabel, myFixture.project)
+    assertNotNull("Should find tool by label", toolTarget)
+    assertEquals(BazelTargetType.JAVA_BINARY, toolTarget!!.targetType)
     
-    // Aliases should be indexed separately
-    val myToolTargets = BazelTargetIndex.getTargetsByName("my_tool", myFixture.project)
-    assertEquals(1, myToolTargets.size)
-    assertTrue(myToolTargets.first().isAlias)
-    assertEquals("tool", myToolTargets.first().originalTargetName)
+    // Aliases should be indexed separately as their own targets
+    val myToolLabel = ResolvedLabel(Main, Package(listOf("tools")), SingleTarget("my_tool"))
+    val myToolTarget = BazelTargetIndex.getTargetByLabel(myToolLabel, myFixture.project)
+    assertNotNull("Should find my_tool by label", myToolTarget)
+    assertEquals(BazelTargetType.ALIAS, myToolTarget!!.targetType)
     
-    val toolAliasTargets = BazelTargetIndex.getTargetsByName("tool_alias", myFixture.project)
-    assertEquals(1, toolAliasTargets.size)
-    assertTrue(toolAliasTargets.first().isAlias)
+    val toolAliasLabel = ResolvedLabel(Main, Package(listOf("tools")), SingleTarget("tool_alias"))
+    val toolAliasTarget = BazelTargetIndex.getTargetByLabel(toolAliasLabel, myFixture.project)
+    assertNotNull("Should find tool_alias by label", toolAliasTarget)
+    assertEquals(BazelTargetType.ALIAS, toolAliasTarget!!.targetType)
   }
 
   fun testBazelTargetInfoSerialization() {
@@ -143,10 +145,7 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
       buildFilePath = "/workspace/java/com/example/BUILD",
       targetType = BazelTargetType.JAVA_LIBRARY,
       ruleName = "java_library",
-      aliases = setOf("alias1", "alias2"),
-      dependencies = listOf("//base:common", ":util"),
-      isAlias = false,
-      originalTargetName = null
+      dependencies = listOf("//base:common", ":util")
     )
     
     // Test conversion to symbol
@@ -154,8 +153,6 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
     assertEquals("test_target", symbol.targetName)
     assertEquals("java/com/example", symbol.packagePath)
     assertEquals(BazelTargetType.JAVA_LIBRARY, symbol.targetType)
-    assertTrue(symbol.aliases.contains("alias1"))
-    assertTrue(symbol.aliases.contains("alias2"))
   }
 
   fun testIndexIgnoresNonBuildFiles() {
@@ -165,16 +162,16 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
     myFixture.addFileToProject("config.yaml", "setting: value")
     
     // These should not be indexed for targets
-    val allTargetNames = BazelTargetIndex.getAllTargetNames(myFixture.project)
-    assertTrue(allTargetNames.isEmpty())
+    val allLabels = BazelTargetIndex.getAllLabels(myFixture.project)
+    assertTrue(allLabels.isEmpty())
     
     // Add a BUILD file - this should be indexed
     myFixture.addFileToProject("BUILD", """
       filegroup(name = "files", srcs = ["**/*"])
     """.trimIndent())
     
-    val targetsAfterBuild = BazelTargetIndex.getAllTargetNames(myFixture.project)
-    assertTrue(targetsAfterBuild.contains("files"))
+    val labelsAfterBuild = BazelTargetIndex.getAllLabels(myFixture.project)
+    assertTrue(labelsAfterBuild.any { it.targetName == "files" })
   }
 
   fun testIndexHandlesComplexDependencies() {
@@ -192,11 +189,11 @@ class BazelTargetIndexTest : BasePlatformTestCase() {
       )
     """.trimIndent())
     
-    val complexTargets = BazelTargetIndex.getTargetsByName("complex_lib", myFixture.project)
-    assertEquals(1, complexTargets.size)
+    val complexLabel = ResolvedLabel(Main, Package(listOf("complex")), SingleTarget("complex_lib"))
+    val complexLib = BazelTargetIndex.getTargetByLabel(complexLabel, myFixture.project)
+    assertNotNull("Should find complex_lib by label", complexLib)
     
-    val complexLib = complexTargets.first()
-    assertEquals(5, complexLib.dependencies.size)
+    assertEquals(5, complexLib!!.dependencies.size)
     assertTrue(complexLib.dependencies.contains("//base:foundation"))
     assertTrue(complexLib.dependencies.contains("@maven//:junit"))
     assertTrue(complexLib.dependencies.contains("@external_repo//pkg:target"))

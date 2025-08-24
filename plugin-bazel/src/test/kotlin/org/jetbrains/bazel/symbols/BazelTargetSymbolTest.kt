@@ -74,30 +74,36 @@ class BazelTargetSymbolTest : BasePlatformTestCase() {
     assertEquals(symbol, dereferenced)
   }
 
-  fun testSymbolWithAliases() {
-    val label = ResolvedLabel(
+  fun testSymbolWithDifferentRepos() {
+    val mainLabel = ResolvedLabel(
       repo = Main,
       packagePath = Package(listOf("tools")),
       target = SingleTarget("tool")
     )
     
-    val aliases = setOf("mytool", "tool_alias")
-    val symbol = BazelTargetSymbol(
-      label = label,
-      buildFilePath = "/workspace/tools/BUILD",
-      targetType = BazelTargetType.GENRULE,
-      aliases = aliases
+    val externalLabel = ResolvedLabel(
+      repo = Canonical("external_repo"),
+      packagePath = Package(listOf("tools")),
+      target = SingleTarget("tool")
     )
     
-    assertTrue(symbol.matchesTargetName("tool"))
-    assertTrue(symbol.matchesTargetName("mytool"))
-    assertTrue(symbol.matchesTargetName("tool_alias"))
-    assertFalse(symbol.matchesTargetName("other_tool"))
+    val mainSymbol = BazelTargetSymbol(
+      label = mainLabel,
+      buildFilePath = "/workspace/tools/BUILD",
+      targetType = BazelTargetType.GENRULE
+    )
     
-    val newAliases = setOf("another_alias")
-    val symbolWithMoreAliases = symbol.withAliases(newAliases)
-    assertTrue(symbolWithMoreAliases.aliases.contains("mytool"))
-    assertTrue(symbolWithMoreAliases.aliases.contains("another_alias"))
+    val externalSymbol = BazelTargetSymbol(
+      label = externalLabel,
+      buildFilePath = "/external/external_repo/tools/BUILD",
+      targetType = BazelTargetType.GENRULE
+    )
+    
+    assertNotEquals("Symbols from different repos should not be equal", mainSymbol, externalSymbol)
+    assertEquals("tool", mainSymbol.targetName)
+    assertEquals("tool", externalSymbol.targetName)
+    assertTrue("Main symbol should be in main workspace", mainSymbol.isMainWorkspace)
+    assertFalse("External symbol should not be in main workspace", externalSymbol.isMainWorkspace)
   }
 
   fun testTargetType() {

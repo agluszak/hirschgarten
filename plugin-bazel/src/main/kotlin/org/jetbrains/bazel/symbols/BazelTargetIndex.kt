@@ -7,30 +7,88 @@ import com.intellij.util.io.DataExternalizer
 import com.intellij.util.io.DataInputOutputUtil
 import com.intellij.util.io.KeyDescriptor
 import org.jetbrains.bazel.languages.starlark.StarlarkFileType
+import org.jetbrains.bazel.label.*
 import java.io.DataInput
 import java.io.DataOutput
 
 /**
- * File-based index for efficiently finding Bazel targets by name.
+ * Key descriptor for serializing Label objects in the index
  */
-class BazelTargetIndex : FileBasedIndexExtension<String, BazelTargetInfo>() {
+class BazelLabelKeyDescriptor : KeyDescriptor<Label> {
+  override fun save(out: DataOutput, value: Label) {
+    out.writeUTF(value.toString())
+  }
+  
+  override fun read(`in`: DataInput): Label {
+    val labelString = `in`.readUTF()
+    return Label.parse(labelString)
+  }
+  
+  override fun getHashCode(value: Label): Int = value.hashCode()
+  
+  override fun isEqual(val1: Label?, val2: Label?): Boolean = val1 == val2
+}
+
+/**
+ * Creates a proper label for a target during indexing
+ */
+private fun createLabelForTarget(target: BazelTargetInfo, file: com.intellij.openapi.vfs.VirtualFile): Label {
+  // For now, assume main workspace - proper repo context detection would go here
+  val packageSegments = if (target.packagePath.isEmpty()) emptyList() else target.packagePath.split("/")
+  
+  return ResolvedLabel(
+    repo = Main,
+    packagePath = Package(packageSegments),
+    target = SingleTarget(target.targetName)
+  )
+}
+
+/**
+ * Get package path from file location
+ */
+private fun getPackagePathFromFile(file: com.intellij.openapi.vfs.VirtualFile): String {
+  val filePath = file.path
+  
+  // Find workspace root
+  var currentDir = file.parent
+  while (currentDir != null) {
+    val children = currentDir.children
+    if (children.any { it.name == "WORKSPACE" || it.name == "MODULE.bazel" }) {
+      // Found workspace root
+      val workspacePath = currentDir.path
+      val relativePath = filePath.removePrefix(workspacePath).removePrefix("/")
+      val packageDir = relativePath.removeSuffix("/${file.name}")
+      
+      return packageDir.takeIf { it.isNotEmpty() } ?: ""
+    }
+    currentDir = currentDir.parent
+  }
+  
+  return ""
+}
+
+/**
+ * File-based index for efficiently finding Bazel targets by label.
+ */
+class BazelTargetIndex : FileBasedIndexExtension<Label, BazelTargetInfo>() {
 
   companion object {
-    val INDEX_ID: ID<String, BazelTargetInfo> = ID.create("BazelTargetIndex")
+    val INDEX_ID: ID<Label, BazelTargetInfo> = ID.create("BazelTargetIndex")
 
     /**
-     * Get all target infos for a given target name across the project
+     * Get target by exact label
      */
-    fun getTargetsByName(targetName: String, project: Project): List<BazelTargetInfo> {
+    fun getTargetByLabel(label: Label, project: Project): BazelTargetInfo? {
       return FileBasedIndex.getInstance()
-        .getValues(INDEX_ID, targetName, GlobalSearchScope.projectScope(project))
+        .getValues(INDEX_ID, label, GlobalSearchScope.projectScope(project))
+        .firstOrNull()
     }
 
     /**
-     * Get all target names in the project
+     * Get all labels in the project
      */
-    fun getAllTargetNames(project: Project): Set<String> {
-      val allKeys = mutableSetOf<String>()
+    fun getAllLabels(project: Project): Set<Label> {
+      val allKeys = mutableSetOf<Label>()
       FileBasedIndex.getInstance().processAllKeys(INDEX_ID, { key ->
         allKeys.add(key)
         true
@@ -41,33 +99,62 @@ class BazelTargetIndex : FileBasedIndexExtension<String, BazelTargetInfo>() {
     /**
      * Get targets in a specific package
      */
-    fun getTargetsInPackage(packagePath: String, project: Project): List<BazelTargetInfo> {
+    fun getTargetsInPackage(packagePath: String, repo: RepoType, project: Project): List<BazelTargetInfo> {
       val targets = mutableListOf<BazelTargetInfo>()
       
-      FileBasedIndex.getInstance().processAllKeys(INDEX_ID, { targetName ->
-        val targetInfos = getTargetsByName(targetName, project)
-        targets.addAll(targetInfos.filter { it.packagePath == packagePath })
+      FileBasedIndex.getInstance().processAllKeys(INDEX_ID, { label ->
+        if (label is ResolvedLabel && 
+            label.repo == repo &&
+            label.packagePath.toString() == packagePath) {
+          val values = FileBasedIndex.getInstance()
+            .getValues(INDEX_ID, label, GlobalSearchScope.projectScope(project))
+          targets.addAll(values)
+        }
         true
       }, GlobalSearchScope.projectScope(project), null)
       
       return targets
     }
+
+    /**
+     * Find targets by name across all packages (for completion)
+     */
+    fun findTargetsByName(targetName: String, project: Project): List<Pair<Label, BazelTargetInfo>> {
+      val results = mutableListOf<Pair<Label, BazelTargetInfo>>()
+      
+      FileBasedIndex.getInstance().processAllKeys(INDEX_ID, { label ->
+        if (label.targetName == targetName) {
+          val values = FileBasedIndex.getInstance()
+            .getValues(INDEX_ID, label, GlobalSearchScope.projectScope(project))
+          for (value in values) {
+            results.add(label to value)
+          }
+        }
+        true
+      }, GlobalSearchScope.projectScope(project), null)
+      
+      return results
+    }
   }
 
-  override fun getName(): ID<String, BazelTargetInfo> = INDEX_ID
+  override fun getName(): ID<Label, BazelTargetInfo> = INDEX_ID
 
-  override fun getIndexer(): DataIndexer<String, BazelTargetInfo, FileContent> {
+  override fun getIndexer(): DataIndexer<Label, BazelTargetInfo, FileContent> {
     return DataIndexer { inputData ->
-      val result = mutableMapOf<String, BazelTargetInfo>()
+      val result = mutableMapOf<Label, BazelTargetInfo>()
       
       try {
-        val targets = BazelTargetParser.parseTargetsFromContent(inputData.contentAsText.toString(), inputData.file)
+        val packagePath = getPackagePathFromFile(inputData.file)
         
-        for (target in targets) {
-          result[target.targetName] = target
-          // Also index by aliases
-          for (alias in target.aliases) {
-            result[alias] = target.copy(targetName = alias, isAlias = true, originalTargetName = target.targetName)
+        // Use bazel query to get accurate target information
+        val project = inputData.project
+        if (project != null) {
+          val queryService = BazelQueryService.getInstance(project)
+          val targets = queryService.queryPackageTargets(packagePath)
+          
+          for (target in targets) {
+            val label = createLabelForTarget(target, inputData.file)
+            result[label] = target
           }
         }
         
@@ -80,7 +167,7 @@ class BazelTargetIndex : FileBasedIndexExtension<String, BazelTargetInfo>() {
     }
   }
 
-  override fun getKeyDescriptor(): KeyDescriptor<String> = EnumeratorStringDescriptor.INSTANCE
+  override fun getKeyDescriptor(): KeyDescriptor<Label> = BazelLabelKeyDescriptor()
 
   override fun getValueExternalizer(): DataExternalizer<BazelTargetInfo> = BazelTargetInfoExternalizer()
 
@@ -93,7 +180,7 @@ class BazelTargetIndex : FileBasedIndexExtension<String, BazelTargetInfo>() {
 
   override fun dependsOnFileContent(): Boolean = true
 
-  override fun getVersion(): Int = 2
+  override fun getVersion(): Int = 3  // Increment to force re-indexing with new Label keys
 }
 
 /**
@@ -105,10 +192,7 @@ data class BazelTargetInfo(
   val buildFilePath: String,
   val targetType: BazelTargetType,
   val ruleName: String,
-  val aliases: Set<String> = emptySet(),
-  val dependencies: List<String> = emptyList(),
-  val isAlias: Boolean = false,
-  val originalTargetName: String? = null
+  val dependencies: List<String> = emptyList()
 ) {
   
   /**
@@ -125,8 +209,7 @@ data class BazelTargetInfo(
     return BazelTargetSymbol(
       label = label,
       buildFilePath = buildFilePath,
-      targetType = targetType,
-      aliases = aliases
+      targetType = targetType
     )
   }
 }
@@ -143,18 +226,10 @@ class BazelTargetInfoExternalizer : DataExternalizer<BazelTargetInfo> {
     out.writeUTF(value.targetType.name)
     out.writeUTF(value.ruleName)
     
-    // Write aliases
-    DataInputOutputUtil.writeSeq(out, value.aliases) { output, alias ->
-      output.writeUTF(alias)
-    }
-    
     // Write dependencies
     DataInputOutputUtil.writeSeq(out, value.dependencies) { output, dep ->
       output.writeUTF(dep)
     }
-    
-    out.writeBoolean(value.isAlias)
-    out.writeUTF(value.originalTargetName ?: "")
   }
   
   override fun read(`in`: DataInput): BazelTargetInfo {
@@ -164,18 +239,10 @@ class BazelTargetInfoExternalizer : DataExternalizer<BazelTargetInfo> {
     val targetType = BazelTargetType.valueOf(`in`.readUTF())
     val ruleName = `in`.readUTF()
     
-    // Read aliases
-    val aliases = DataInputOutputUtil.readSeq(`in`) { input ->
-      input.readUTF()
-    }.toSet()
-    
     // Read dependencies
     val dependencies = DataInputOutputUtil.readSeq(`in`) { input ->
       input.readUTF()
     }
-    
-    val isAlias = `in`.readBoolean()
-    val originalTargetName = `in`.readUTF().takeIf { it.isNotEmpty() }
     
     return BazelTargetInfo(
       targetName = targetName,
@@ -183,10 +250,7 @@ class BazelTargetInfoExternalizer : DataExternalizer<BazelTargetInfo> {
       buildFilePath = buildFilePath,
       targetType = targetType,
       ruleName = ruleName,
-      aliases = aliases,
-      dependencies = dependencies,
-      isAlias = isAlias,
-      originalTargetName = originalTargetName
+      dependencies = dependencies
     )
   }
 }

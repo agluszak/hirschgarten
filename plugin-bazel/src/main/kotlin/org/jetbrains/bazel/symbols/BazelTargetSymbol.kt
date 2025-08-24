@@ -16,8 +16,7 @@ import org.jetbrains.bazel.label.ResolvedLabel
 data class BazelTargetSymbol(
   val label: Label,
   val buildFilePath: String,
-  val targetType: BazelTargetType = BazelTargetType.UNKNOWN,
-  val aliases: Set<String> = emptySet()
+  val targetType: BazelTargetType = BazelTargetType.UNKNOWN
 ) : Symbol, PresentableSymbol {
 
   val targetName: String = label.targetName
@@ -25,7 +24,7 @@ data class BazelTargetSymbol(
   val isMainWorkspace: Boolean = label.isMainWorkspace
 
   override fun createPointer(): BazelTargetSymbolPointer {
-    return BazelTargetSymbolPointer(label.toString(), buildFilePath, targetType, aliases)
+    return BazelTargetSymbolPointer(label.toString(), buildFilePath, targetType)
   }
 
   override fun getSymbolPresentation(): SymbolPresentation {
@@ -46,20 +45,6 @@ data class BazelTargetSymbol(
   }
 
   override fun toString(): String = "${label}@${buildFilePath}"
-
-  /**
-   * Creates a new symbol with additional aliases
-   */
-  fun withAliases(newAliases: Set<String>): BazelTargetSymbol {
-    return copy(aliases = aliases + newAliases)
-  }
-
-  /**
-   * Checks if this symbol matches the given target name (including aliases)
-   */
-  fun matchesTargetName(name: String): Boolean {
-    return targetName == name || aliases.contains(name)
-  }
 }
 
 /**
