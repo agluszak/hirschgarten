@@ -57,7 +57,7 @@ class BazelTargetReference(
 
   override fun getVariants(): Array<Any> {
     // Provide completion variants - all available targets
-    val allTargets = BazelTargetIndex.findTargetsByName("", project)  // Get all targets
+    val allTargets = BazelTargetIndex.getInstance(project).findTargetsByName("")  // Get all targets
     return allTargets.map { (label, targetInfo) ->
       com.intellij.codeInsight.lookup.LookupElementBuilder.create(targetInfo.targetName)
         .withIcon(org.jetbrains.bazel.assets.BazelPluginIcons.bazel)
@@ -114,7 +114,7 @@ class BazelTargetReference(
       }
       
       // Now we can do exact lookup by the resolved label
-      val targetInfo = BazelTargetIndex.getTargetByLabel(resolvedLabel, project)
+      val targetInfo = BazelTargetIndex.getInstance(project).getTargetByLabel(resolvedLabel)
       return if (targetInfo != null) {
         listOf(targetInfo.toSymbol())
       } else {

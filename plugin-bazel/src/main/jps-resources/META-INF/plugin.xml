@@ -223,6 +223,11 @@
       implementation="org.jetbrains.bazel.target.sync.TargetUtilsSyncHook"
     />
     <projectSyncHook
+      id="TargetIndexSyncHook"
+      implementation="org.jetbrains.bazel.symbols.TargetIndexSyncHook"
+      order="after TargetUtilsSyncHook"
+    />
+    <projectSyncHook
       implementation="org.jetbrains.bazel.sync.projectStructure.legacy.WorkspaceModuleProjectSyncHook"
       order="after TargetUtilsSyncHook"
     />
@@ -505,7 +510,7 @@
       serviceInterface="org.jetbrains.bazel.server.connection.BazelServerService"
     />
     <projectService
-      serviceImplementation="org.jetbrains.bazel.symbols.BazelQueryService"
+      serviceImplementation="org.jetbrains.bazel.symbols.BazelTargetIndex"
     />
 
     <consoleFilterProvider implementation="org.jetbrains.bazel.ui.console.BazelBuildTargetConsoleFilterProvider" />
@@ -838,7 +843,6 @@
     
     <psi.declarationProvider implementation="org.jetbrains.bazel.symbols.BazelTargetSymbolDeclarationProvider"/>
     
-    <fileBasedIndex implementation="org.jetbrains.bazel.symbols.BazelTargetIndex"/>
     
     <lang.refactoringSupport language="Starlark" 
                             implementationClass="org.jetbrains.bazel.symbols.BazelTargetRefactoringSupport"/>
