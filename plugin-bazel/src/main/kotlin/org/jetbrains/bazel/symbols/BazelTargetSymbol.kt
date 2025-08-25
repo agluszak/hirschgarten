@@ -33,16 +33,11 @@ data class BazelTargetSymbol(
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
-    if (javaClass != other?.javaClass) return false
-    other as BazelTargetSymbol
-    return label == other.label && buildFilePath == other.buildFilePath
+    if (other !is BazelTargetSymbol) return false
+    return label == other.label
   }
 
-  override fun hashCode(): Int {
-    var result = label.hashCode()
-    result = 31 * result + buildFilePath.hashCode()
-    return result
-  }
+  override fun hashCode(): Int = label.hashCode()
 
   override fun toString(): String = "${label}@${buildFilePath}"
 }

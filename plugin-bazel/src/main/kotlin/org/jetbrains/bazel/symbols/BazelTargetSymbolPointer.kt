@@ -1,6 +1,7 @@
 package org.jetbrains.bazel.symbols
 
 import com.intellij.model.Pointer
+import com.intellij.openapi.diagnostic.thisLogger
 import org.jetbrains.bazel.label.Label
 
 /**
@@ -21,8 +22,11 @@ class BazelTargetSymbolPointer(
         buildFilePath = buildFilePath,
         targetType = targetType
       )
+    } catch (e: IllegalArgumentException) {
+      thisLogger().debug("Failed to parse label '$labelString': ${e.message}")
+      null
     } catch (e: Exception) {
-      // Return null if the label cannot be parsed (e.g., target no longer exists)
+      thisLogger().warn("Unexpected error dereferencing symbol pointer for label '$labelString'", e)
       null
     }
   }

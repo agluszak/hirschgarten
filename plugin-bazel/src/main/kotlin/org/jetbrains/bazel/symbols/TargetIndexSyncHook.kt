@@ -1,5 +1,6 @@
 package org.jetbrains.bazel.symbols
 
+import com.intellij.openapi.diagnostic.thisLogger
 import org.jetbrains.bazel.info.BspTargetInfo
 import org.jetbrains.bazel.label.*
 import org.jetbrains.bazel.sync.ProjectSyncHook
@@ -63,9 +64,11 @@ private class TargetIndexSyncHook : ProjectSyncHook {
         dependencies = dependencies
       )
       
+    } catch (e: IllegalArgumentException) {
+      thisLogger().debug("Failed to process BSP target info for label '$label': ${e.message}")
+      return null
     } catch (e: Exception) {
-      // Log error but don't fail sync
-      // TODO: Add proper logging
+      thisLogger().warn("Unexpected error converting BSP target info for label '$label'", e)
       return null
     }
   }

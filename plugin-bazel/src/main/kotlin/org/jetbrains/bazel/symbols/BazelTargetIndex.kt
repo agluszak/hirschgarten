@@ -1,6 +1,7 @@
 package org.jetbrains.bazel.symbols
 
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import org.jetbrains.bazel.label.*
 import java.util.concurrent.ConcurrentHashMap
@@ -81,19 +82,27 @@ data class BazelTargetInfo(
   /**
    * Convert to Symbol API representation
    */
-  fun toSymbol(): BazelTargetSymbol {
-    val packageSegments = if (packagePath.isEmpty()) emptyList() else packagePath.split("/")
-    
-    val label = ResolvedLabel(
-      repo = Main,  // For now, assume main workspace
-      packagePath = Package(packageSegments),
-      target = SingleTarget(targetName)
-    )
-    
-    return BazelTargetSymbol(
-      label = label,
-      buildFilePath = buildFilePath,
-      targetType = targetType
-    )
+  fun toSymbol(): BazelTargetSymbol? {
+    return try {
+      val packageSegments = if (packagePath.isEmpty()) emptyList() else packagePath.split("/")
+      
+      val label = ResolvedLabel(
+        repo = Main,  // For now, assume main workspace
+        packagePath = Package(packageSegments),
+        target = SingleTarget(targetName)
+      )
+      
+      BazelTargetSymbol(
+        label = label,
+        buildFilePath = buildFilePath,
+        targetType = targetType
+      )
+    } catch (e: IllegalArgumentException) {
+      thisLogger().debug("Failed to create symbol for target '$targetName' in package '$packagePath': ${e.message}")
+      null
+    } catch (e: Exception) {
+      thisLogger().warn("Unexpected error creating symbol for target '$targetName' in package '$packagePath'", e)
+      null
+    }
   }
 }
