@@ -63,6 +63,10 @@ class BazelRunner(
     fun queryExpression(expression: String, builder: BazelCommand.QueryExpression.() -> Unit = {}) =
       BazelCommand.QueryExpression(bazelBinary, expression).apply { builder() }
 
+    /** Query all targets in a given package */
+    fun queryPackageTargets(packagePath: String, builder: BazelCommand.QueryExpression.() -> Unit = {}) =
+      BazelCommand.QueryExpression(bazelBinary, "//$packagePath:*").apply { builder() }
+
     fun cquery(builder: BazelCommand.CQuery.() -> Unit = {}) =
       BazelCommand.CQuery(bazelBinary).apply { builder() }.also { inheritWorkspaceOptions = true }
 
